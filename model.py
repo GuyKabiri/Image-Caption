@@ -12,16 +12,14 @@ class Encoder(nn.Module):
         self.train_backbone = train_backbone
         self.model = models.inception_v3(pretrained=True, aux_logits=False)
         self.model.fc = nn.Linear(self.model.fc.in_features, embed_size)
+        self.dropout = nn.Dropout(0.3)
+        self.relu = nn.ReLU()
         self.freeze()
 
-        # self.dropout= nn.Dropout(0.5)
-
-
     def forward(self, images):
-        features = self.model(images)
-        output = nn.ReLU(features)
+        output = self.model(images)
+        output = self.dropout(self.relu(output))
         return output
-
 
     def freeze(self):
         for name, param in self.model.named_parameters():
@@ -38,9 +36,11 @@ class Decoder(nn.Module):
         self.embed = nn.Embedding(num_embeddings=vocab_size, embedding_dim=embed_size)
         self.lstm = nn.LSTM(embed_size, hidden_size, num_layers)
         self.linear = nn.Linear(hidden_size, vocab_size)
+        self.dropout = nn.Dropout(0.3)
 
     def forward(self, features, captions):
-        embeddings = torch.cat((features.unsqueeze(0), captions), dim=0)
+        embeddings = self.dropout(self.embed(captions))
+        embeddings = torch.cat((features.unsqueeze(0), embeddings), dim=0)
         hiddens, _ = self.lstm(embeddings)
         outputs = self.linear(hiddens)
         return outputs
