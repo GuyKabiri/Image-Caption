@@ -10,46 +10,47 @@ class Encoder(nn.Module):
     def __init__(self, embed_size, train_backbone=False) -> None:
         super(Encoder, self).__init__()
         self.train_backbone = train_backbone
-        self.model = None
-        self.model.fc = None
+        self.model = models.inception_v3(pretrained=True, aux_logits=False)
+        self.model.fc = nn.Linear(self.model.fc.in_features, embed_size)
         self.freeze()
 
+        # self.dropout= nn.Dropout(0.5)
+
+
     def forward(self, images):
-        """
-        The Encoder takes in images and basicly extracts the features with the backbone.
-        Write the process in code below.
-        """
+        features = self.model(images)
+        output = nn.ReLU(features)
         return output
 
+
     def freeze(self):
-        for name, param in self.model.named_parameters:
+        for name, param in self.model.named_parameters():
             if "fc.weight" in name or "fc.bias" in name:
                 param.requires_grad = True
             else:
                 param.requires_grad = self.train_backbone
 
 
+
 class Decoder(nn.Module):
     def __init__(self, embed_size, hidden_size, vocab_size, num_layers) -> None:
         super(Decoder, self).__init__()
         self.embed = nn.Embedding(num_embeddings=vocab_size, embedding_dim=embed_size)
-        self.lstm = None
-        self.linear = None
+        self.lstm = nn.LSTM(embed_size, hidden_size, num_layers)
+        self.linear = nn.Linear(hidden_size, vocab_size)
 
     def forward(self, features, captions):
-        """
-        Use the skeleton above and code the Decoder forward-pass
-        **features are the extracted features we obtained from the bacbone.**
-        Fill me!
-        """
+        embeddings = torch.cat((features.unsqueeze(0), captions), dim=0)
+        hiddens, _ = self.lstm(embeddings)
+        outputs = self.linear(hiddens)
         return outputs
 
 
 class EncoderDecoder(nn.Module):
     def __init__(self, embed_size, hidden_size, vocab_size, num_layers, train_backbone=False) -> None:
         super(EncoderDecoder, self).__init__()
-        self.encoder = None
-        self.decoder = None
+        self.encoder = Encoder(embed_size, train_backbone)
+        self.decoder = Decoder(embed_size, hidden_size, vocab_size, num_layers)
 
     def forward(self, images, captions):
         x = self.encoder(images)
@@ -57,10 +58,20 @@ class EncoderDecoder(nn.Module):
         return outputs
 
     def caption(self, image, vocabulary, max_length=50):
-        """
-        Our image caption inference!
-        take in an image and vocabulary
-        run the model on the image and output the caption!
-        """
         result = []
+
+        with torch.no_grad():
+            x = self.encoder(image).unsqueeze(0)
+            states = None
+            
+            for _ in range(max_length):
+                hiddens, states = self.decoder.lstm(x, states)
+                output = self.decoder.linear(hiddens.squeeze(0))
+                predicted = output.argmax(1)
+                result.append(predicted.item())
+                x = self.decoder.embed(output).unsqueeze(0)
+                
+                if vocabulary.itos[predicted.item()] == '<EOS>':
+                    break
+                
         return [vocabulary.itos[idx] for  idx in result]
