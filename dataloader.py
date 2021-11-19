@@ -104,7 +104,7 @@ def get_loader(
     root_folder,
     annotation_file,
     transform,
-    batch_size=32,
+    batch_size=64,
     num_workers=4,
     shuffle=True,
     pin_memory=True,
@@ -122,13 +122,44 @@ def get_loader(
 
     return loader
 
+def get_transformer(phase):
+    return transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Resize(size=(224, 224)),
+            transforms.Normalize((0.485, 0.456, 0.406),
+                                (0.229, 0.224, 0.225)),
+        ])
+
+def get_train_valid_loaders():
+    trainloader = get_loader(
+        root_folder="data/flickr8k/images/",
+        annotation_file="data/flickr8k/captions.txt",
+        transform=get_transformer('train')
+    )
+
+    validloader = get_loader(
+        root_folder="data/flickr8k/images/",
+        annotation_file="data/flickr8k/captions.txt",
+        transform=get_transformer('valid')
+    )
+
+    return {
+        'train': trainloader,
+        'valid': None,
+    }
+
 
 def main():
 
     transform = transforms.Compose(
         [
             transforms.ToTensor(),
-            transforms.Resize(size=(224, 224))])
+            transforms.Resize(size=(224, 224)),
+            transforms.Normalize((0.485, 0.456, 0.406),
+                                (0.229, 0.224, 0.225)),
+        ])
+            
     dataloader = get_loader(
         root_folder="data/flickr8k/images/",
         annotation_file="data/flickr8k/captions.txt",

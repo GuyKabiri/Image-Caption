@@ -1,3 +1,5 @@
+import sys
+from datetime import datetime
 import torch
 from torch.utils import data
 from torch.utils.data import dataloader
@@ -6,132 +8,144 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision.transforms as transforms
 from torch.utils.tensorboard import SummaryWriter
-from utils import save_checkpoint, load_checkpoint, print_examples
-from dataloader import get_loader
-from model import *
 from tqdm import tqdm
+from utils import *
+from dataloader import *
+from model import *
+from config import *
 
 
-def train():
-    transform = transforms.Compose([
-                    transforms.ToTensor(),
-                    transforms.Resize(size=(224, 224))
-                ])
-            
-    train_loader = get_loader(
-        root_folder="data/flickr8k/images/",
-        annotation_file="data/flickr8k/captions.txt",
-        transform=transform
-    )
-    torch.backends.cudnn.benchmark = True
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(device)
+'''
+    training and validation for one epoch
+'''
+def train_valid_one_epoch(model, loaders, writers, criterion, optimizer, scheduler, steps):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    kpi = {
+        'train': {
+            'loss': [],
+        },
+        'valid': {
+            'loss': [],
+        }
+    }
 
-    # Hyperparameters 
-    load_model = False
-    embed_size = 400
-    hidden_size = 512
-    vocab_size =  len(train_loader.dataset.vocab)
-    num_layers = 5
-    learning_rate = 1e-4
-    num_epochs = 2
-    print_every = 100
+    for phase in ['train', 'valid']:            #   iterate for training and validation phases
+        if phase == 'train':
+            model.train()
+        elif loaders['valid']:
+            model.eval()
+        else:                   #   if validation loader is not defined
+            continue
 
-
-    # Tensorboard training monitor
-    writer = SummaryWriter("logs/lab2")
-    step = 0
-
-    # initialize model, loss, optimizer etc.
-    model = EncoderDecoder(embed_size, hidden_size, vocab_size, num_layers).to(device)
-    criterion = nn.CrossEntropyLoss(ignore_index=train_loader.dataset.vocab.stoi['<PAD>'])
-    optimizer = optim.Adam(model.parameters(), lr = learning_rate)
-    save_model = True
-
-    if load_model:
-        step = load_checkpoint(torch.load('my_checkpoint.pth.tar'), model, optimizer)
-
-    model = model.train()
-    
-    for epoch in range(1, num_epochs + 1):   
-        for idx, (images, captions) in tqdm(
-            enumerate(train_loader), total=len(train_loader)
+        # iterate over batches
+        for idx, (images, captions) in tqdm(    
+            enumerate(loaders[phase]), total=len(loaders[phase])
         ):
-            images, captions = images.to(device), captions.to(device)
+            images, captions = images.to(device), captions.to(device)           #   move itmes to gpu
 
-            optimizer.zero_grad()
+            if phase == 'train':
+                outputs = model(images, captions[:-1])                          #   calculate outputs for training
+            else:
+                with torch.no_grad():
+                    outputs = model(images, captions[:-1])                      #   calculate outputs for validation
 
-            outputs = model(images, captions)
-            loss = criterion(outputs.view(-1, vocab_size), captions.view(-1))
+            loss = criterion(
+                outputs.reshape(-1, outputs.shape[2]), captions.reshape(-1)     #   calculate loss
+            )
 
-            loss.backward()
-            optimizer.step()
-            
-            if (idx + 1) % print_every == 0:
-                print("Epoch: {} loss: {:.5f}".format(epoch, loss.item()))
-                
-                
-                # #generate the caption
-                # model.eval()
-                # with torch.no_grad():
-                #     dataiter = iter(dataloader)
-                #     img,_ = next(dataiter)
-                #     features = model.encoder(img[0:1].to(device))
-                #     caps = model.decoder.generate_caption(features.unsqueeze(0),vocab=dataset.vocab)
-                #     caption = ' '.join(caps)
-                #     print_examples(img[0], title=caption,)
-                    
-                # model.train()
+            kpi[phase]['loss'].append(loss.item())                              #   register this step loss
+
+            if phase == 'train':
+                writers['train'].add_scalar("steps loss", loss.item(), global_step=steps['train'])
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+            steps[phase] += 1
             
             del images, captions, loss
             torch.cuda.empty_cache()
+    
+    return kpi, steps
 
 
+'''
+    training and validation for numerous of epochs
+'''
+def train_valid_epochs(model, loaders, writers, num_epochs, criterion, optimizer, scheduler, steps, run_path, prev_valid_loss=float('inf')):
+    model_save_path = '{}/models/model_checkpoint.pth'.format(run_path)
 
+    best_valid_loss = prev_valid_loss
 
+    #   iterate over the epochs
+    for epoch in range(1, num_epochs + 1):
+        print('Epoch {:3d} of {}:'.format(epoch, num_epochs), flush=True)
 
+        #   train and validation for one epoch
+        kpi, steps = train_valid_one_epoch(model, loaders, writers, criterion, optimizer, scheduler, steps)
 
+        #   pretty printing training and validation results
+        print_str = ''
+        for phase in ['train', 'valid']:
+            loss = sum(kpi[phase]['loss']) / len(loaders[phase])
+            print_str += '{}:\tloss={:.5f}\n'.format(phase, loss)
+            writers[phase].add_scalar('loss', loss, epoch)
+        
+        #   if validation loss is better, save model chechpoint
+        if kpi['valid']['loss'] < best_valid_loss:
+            best_valid_loss = kpi['valid']['loss']
+            checkpoint = {
+                'state_dict': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'train_step': steps['train'],
+                'valid_step': steps['valid'],
+                'epoch': epoch,
+            }
+            save_checkpoint(checkpoint, model_save_path)
+    
 
+'''
+    train model by a predefined configuration
+'''
+def train():
 
+    #   generate running environment
+    datetime_srt = datetime.today().strftime("%d-%m-%y_%H:%M")
+    run_path = os.path.join(sys.path[0], 'runs', datetime_srt)
+    print('Generating running environment')
+    create_env(run_path)
+    
+    torch.backends.cudnn.benchmark = True
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    #   generate training and validation dataloaders
+    print('Generating loaders')
+    loaders = get_train_valid_loaders()
 
+    #   update vocabulary size in config file
+    CFG.vocab_size =  len(loaders['train'].dataset.vocab)
+    CFG.save(run_path)
 
+    #   generate training and validation writers
+    print('Generating writers')
+    writers = get_writers(run_path, CFG.model_name)
+    steps = {
+        'train': 0,
+        'valid': 0
+    }
 
-    # for epoch in range(num_epochs):
-    #     # print_examples(model, device, dataset)
+    # initialize model, loss, optimizer, scheduler
+    print('Generating model')
+    model = EncoderDecoder(CFG.embed_size, CFG.hidden_size, CFG.vocab_size, CFG.lstm_num_layers, pretrained=CFG.pretrained, train_backbone=CFG.train_backbone, drop_prob=CFG.drop_rate).to(device)
+    criterion = CFG.criterion(ignore_index=loaders['train'].dataset.vocab.stoi['<PAD>'])
+    optimizer = CFG.optimizer(model.parameters(), **CFG.optimizer_dict)
+    scheduler = CFG.scheduler(optimizer, **CFG.scheduler_dict) if CFG.scheduler else None
 
-    #     for idx, (imgs, captions) in tqdm(
-    #         enumerate(train_loader), total=len(train_loader)
-    #     ):
-    #         imgs = imgs.to(device)
-    #         captions = captions.to(device)
-            
-    #         score = model(imgs, captions[:-1])
+    if CFG.load_model:
+        steps, epoch = load_checkpoint(torch.load(CFG.model_path), model, optimizer)
 
-    #         # print(score.shape, captions.shape)
-    #         # print(score.reshape(-1, score.shape[2]).shape, captions.reshape(-1).shape)
-
-
-    #         optimizer.zero_grad()
-    #         loss = criterion(score.reshape(-1, score.shape[2]), captions.reshape(-1))
-    #         # loss = criterion(score, captions)
-
-    #         writer.add_scalar('loss', loss.item(), step)
-            
-    #         step += 1
-    #         loss.backward()
-    #         optimizer.step()
-    #         del imgs, captions, loss
-    #         torch.cuda.empty_cache()
-
-    #     if save_model:
-    #         checkpoint = {
-    #             "state_dict": model.state_dict(),
-    #             "optimizer": optimizer.state_dict(),
-    #             "step": step,
-    #         }
-    #         save_checkpoint(checkpoint)
+    train_valid_epochs(model, loaders, writers, CFG.num_epochs, criterion, optimizer, scheduler, steps, run_path)
 
 
 if __name__ == "__main__":
