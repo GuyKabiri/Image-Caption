@@ -88,13 +88,15 @@ def train_valid_epochs(model, loaders, writers, num_epochs, criterion, optimizer
         #   pretty printing training and validation results
         print_str = ''
         for phase in ['train', 'valid']:
-            loss = sum(kpi[phase]['loss']) / len(loaders[phase])
-            print_str += '{}:\tloss={:.5f}\n'.format(phase, loss)
-            writers[phase].add_scalar('loss', loss, epoch)
+            if loaders[phase]:
+                loss = sum(kpi[phase]['loss']) / len(loaders[phase])
+                print_str += '{}:\tloss={:.5f}\n'.format(phase, loss)
+                writers[phase].add_scalar('loss', loss, epoch)
         
         #   if validation loss is better, save model chechpoint
-        if kpi['valid']['loss'] < best_valid_loss:
-            best_valid_loss = kpi['valid']['loss']
+        epoch_loss = sum(kpi['train']['loss']) / len(loaders['train'])
+        if epoch_loss < best_valid_loss:
+            best_valid_loss = epoch_loss
             checkpoint = {
                 'state_dict': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
@@ -103,6 +105,9 @@ def train_valid_epochs(model, loaders, writers, num_epochs, criterion, optimizer
                 'epoch': epoch,
             }
             save_checkpoint(checkpoint, model_save_path)
+        
+        print_examples(model, loaders['valid'].dataset)
+        print(print_str)
     
 
 '''
