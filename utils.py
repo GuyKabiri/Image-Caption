@@ -5,6 +5,7 @@ import torchvision.transforms as transforms
 from PIL import Image
 from torch.utils.tensorboard import SummaryWriter
 from dataloader import *
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 
 
 def print_examples(model, dataset):
@@ -80,3 +81,41 @@ def get_writers(path, model_name, fold=None):
 
     return { phase: SummaryWriter('{}/logs/{}_{}'.format(path, model_name, phase))
                                                                                     for phase in ['train', 'valid'] }
+
+
+def clean_sentence(sentence):
+    for i, item in enumerate(sentence):
+        if item == '<SOS>':
+            sentence.remove(item)
+
+        if item == '<EOS>':
+            del sentence[i: len(sentence)] # remove <EOS> and <PAD> after it
+    return sentence
+
+
+def bleu_score_(model, batch, dataset, n=4):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    n_grams = { '{}-gram'.format(i): []
+                                        for i in range(1, 1+n) }    #   generate dict for each n_gram
+
+    images, captions = batch
+    smoothie = SmoothingFunction().method1
+
+    with torch.no_grad():
+        for img in images:    #   iterate over images
+            img = img.unsqueeze(0)      #   remove the batch axis
+
+            #   generate text sentence
+            captions_list = [clean_sentence([dataset.vocab.itos[idx.detach().cpu().item()] for idx in captions[:, i, j]]) for j in range(5)]
+            output = clean_sentence(model.caption(img.to(device), dataset.vocab))
+
+            #   calculate n_grams for each images
+            for i in range(1, 1+n):
+                w = 1/i                 #   weight to assign
+                weights = tuple(w if j<i else 0 for j in range(n))  #   generate vector of weights e.g.: [0.33, 0.33, 0.33, 0] for 3-gram
+                name = '{}-gram'.format(i)
+                gram = sentence_bleu(captions_list, output, weights=weights, smoothing_function=smoothie)
+                n_grams[name] = np.mean(np.array(gram))
+
+    return n_grams
