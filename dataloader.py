@@ -65,29 +65,49 @@ class FlickerDataset(Dataset):
         self.df = pd.read_csv(captions_file)
         self.transform = transform
 
-        self.imgs = self.df["image"]
-        self.captions = self.df["caption"]
+        self.images = os.listdir(self.root_dir)
+        # self.imgs = self.df["image"]
+        # self.captions = self.df["caption"]
         self.vocab = Vocabulary(freq_treshold)
-        self.vocab.build_vocabulary(self.captions.tolist())
+        self.vocab.build_vocabulary(self.df.caption.tolist())        
 
 
     def __len__(self):
-        return len(self.df)
+        return len(self.images)
 
 
     def __getitem__(self, index):
-        caption = self.captions[index]
-        img_id = self.imgs[index]
+        img_id = self.images[index]
+        raw = self.df[self.df['image']==img_id]['caption'].tolist()
+        caption = self.get_captions(raw)
+
+        # caption = self.captions[index]
+        # img_id = self.imgs[index]
         img = Image.open(os.path.join(self.root_dir, img_id)).convert("RGB")
 
         if self.transform:
             img = self.transform(img)
 
-        numericalized_caption = [self.vocab.stoi["<SOS>"]] # stoi = string to index finding the start of the sentence
-        numericalized_caption += self.vocab.numericalize(caption) # do it for the rest of the caption
-        numericalized_caption.append(self.vocab.stoi["<EOS>"])
+        # numericalized_captions = []
+        # for cap in captions:
+        #     num_cap = [self.vocab.stoi["<SOS>"]] # stoi = string to index finding the start of the sentence
+        #     num_cap += self.vocab.numericalize(cap) # do it for the rest of the caption
+        #     num_cap.append(self.vocab.stoi["<EOS>"])
+        #     numericalized_captions.append(torch.tensor(num_cap))
 
-        return img, torch.as_tensor(numericalized_caption)
+
+        return img, torch.as_tensor(caption)
+
+
+    def get_captions(self, raw_cpations):
+        numericalized_captions = [] 
+        for caption in raw_cpations:
+            num_cap = [self.vocab.stoi['<SOS>']] # stoi = string to index finding the start of the sentence
+            num_cap += self.vocab.numericalize(caption) # do it for the rest of the caption
+            num_cap.append(self.vocab.stoi['<EOS>'])
+            numericalized_captions.append(torch.tensor(num_cap))
+        captions = pad_sequence(numericalized_captions, batch_first=False, padding_value=self.vocab.stoi['<PAD>'])
+        return captions
 
 
 class MyCollate:

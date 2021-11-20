@@ -42,7 +42,11 @@ def train_valid_one_epoch(model, loaders, writers, criterion, optimizer, schedul
         for idx, (images, captions) in tqdm(    
             enumerate(loaders[phase]), total=len(loaders[phase]), desc=phase
         ):
+            max_length, batch_size, _ = captions.shape
+            captions = captions.reshape(max_length, batch_size*5)
+
             images, captions = images.to(device), captions.to(device)           #   move itmes to gpu
+            images = torch.repeat_interleave(images, repeats=5, dim=0) #[a, b, c] -> [aaaaa, bbbbb, ccccc].T
 
             if phase == 'train':
                 outputs = model(images, captions[:-1])                          #   calculate outputs for training
@@ -50,9 +54,7 @@ def train_valid_one_epoch(model, loaders, writers, criterion, optimizer, schedul
                 with torch.no_grad():
                     outputs = model(images, captions[:-1])                      #   calculate outputs for validation
 
-            loss = criterion(
-                outputs.reshape(-1, outputs.shape[2]), captions.reshape(-1)     #   calculate loss
-            )
+            loss = criterion(outputs.reshape(-1, outputs.shape[2]), captions.reshape(-1))   #   calculate loss
 
             kpi[phase]['loss'].append(loss.item())                              #   register this step loss
 
