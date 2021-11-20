@@ -7,7 +7,7 @@ from torch.functional import F
 
 
 class Encoder(nn.Module):
-    def __init__(self, embed_size, pretrained=True, train_backbone=False, drop_prob=0.3) -> None:
+    def __init__(self, embed_size, pretrained=True, train_backbone=False, drop_prob=0.5) -> None:
         super(Encoder, self).__init__()
         self.pretrained = pretrained
         self.train_backbone = train_backbone
@@ -36,7 +36,7 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, embed_size, hidden_size, vocab_size, num_layers, drop_prob=0.3) -> None:
+    def __init__(self, embed_size, hidden_size, vocab_size, num_layers, drop_prob=0.5) -> None:
         super(Decoder, self).__init__()
         self.embed = nn.Embedding(num_embeddings=vocab_size, embedding_dim=embed_size)
         self.lstm = nn.LSTM(embed_size, hidden_size, num_layers)
@@ -53,7 +53,7 @@ class Decoder(nn.Module):
 
 
 class EncoderDecoder(nn.Module):
-    def __init__(self, embed_size, hidden_size, vocab_size, num_layers, pretrained=True, train_backbone=False, drop_prob=0.3) -> None:
+    def __init__(self, embed_size, hidden_size, vocab_size, num_layers, pretrained=True, train_backbone=False, drop_prob=0.5) -> None:
         super(EncoderDecoder, self).__init__()
         self.encoder = Encoder(embed_size, pretrained, train_backbone, drop_prob)
         self.decoder = Decoder(embed_size, hidden_size, vocab_size, num_layers, drop_prob)
