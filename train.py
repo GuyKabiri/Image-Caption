@@ -108,11 +108,7 @@ def train_valid_epochs(model, loaders, writers, num_epochs, criterion, optimizer
         print('Epoch {:3d} of {}:'.format(epoch, num_epochs), flush=True)
 
         #   train and validation for one epoch
-        kpi, steps = train_valid_one_epoch(model, loaders, writers, criterion, optimizer, scheduler, steps)
-        
-        if scheduler is not None:
-            writers['train'].add_scalar('lr', scheduler.get_last_lr()[0], epoch)
-            scheduler.step()   
+        kpi, steps = train_valid_one_epoch(model, loaders, writers, criterion, optimizer, scheduler, steps) 
 
         #   pretty printing training and validation results
         print_str = ''
@@ -122,18 +118,22 @@ def train_valid_epochs(model, loaders, writers, num_epochs, criterion, optimizer
                 print_str += '{}:\tloss={:.5f}'.format(phase, loss)
 
                 for n_gram in kpi[phase]['bleu']:
-                    bleu = kpi[phase]['bleu'][n_gram]
+                    bleu = kpi[phase]['bleu'][n_gram] / len(loaders[phase])
                     print_str += '\t{}={:.5f}'.format(n_gram, bleu)
                     writers[phase].add_scalar(n_gram, bleu, epoch)
 
                 print_str += '\n'
                 writers[phase].add_scalar('loss', loss, epoch)
 
-        
+        epoch_val_loss = sum(kpi['valid']['loss']) / len(loaders['valid'])
+
+        if scheduler is not None:
+            writers['train'].add_scalar('lr', scheduler.get_last_lr()[0], epoch)
+            scheduler.step(epoch_val_loss)  
+
         #   if validation loss is better, save model chechpoint
-        epoch_loss = sum(kpi['valid']['loss']) / len(loaders['valid'])
-        if epoch_loss < best_valid_loss:
-            best_valid_loss = epoch_loss
+        if epoch_val_loss < best_valid_loss:
+            best_valid_loss = epoch_val_loss
             checkpoint = {
                 'state_dict': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
@@ -187,7 +187,7 @@ def train():
     # initialize model, loss, optimizer, scheduler
     print('Generating model')
     model = EncoderDecoder(CFG.embed_size, CFG.hidden_size, CFG.vocab_size, CFG.lstm_num_layers, pretrained=CFG.pretrained, train_backbone=CFG.train_backbone, drop_prob=CFG.drop_rate).to(device)
-    criterion = CFG.criterion(ignore_index=loaders['train'].dataset.vocab.stoi['<PAD>'])
+    criterion = CFG.criterion(ignore_index=loaders['train'].dataset.vocab.stoi['<PAD>'], **CFG.criterion_dict)
     optimizer = CFG.optimizer(model.parameters(), **CFG.optimizer_dict)
     scheduler = CFG.scheduler(optimizer, **CFG.scheduler_dict) if CFG.scheduler else None
 
