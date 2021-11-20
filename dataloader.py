@@ -125,7 +125,7 @@ class MyCollate:
 
 
 def get_transformer(phase):
-    if phase == 'test':
+    if phase == 'print':
         return transforms.Compose(
             [
                 transforms.ToTensor(),
@@ -152,29 +152,24 @@ def get_train_valid_loaders(train_size=.75, batch_size=64, num_workers=4, shuffl
     indices = list(range(len(dataset)))
     split_train = int(np.floor(train_size * len(dataset)))
     split_valid = int(np.floor((1-train_size)/2 * len(dataset))) + split_train
-    train_indices = indices[ : split_train]
-    valid_indices = indices[ split_train : split_valid ]
-    test_indices = indices[ split_valid : ]
+    indices_dict = { 
+        'train':    indices[ : split_train],
+        'valid':    indices[ split_train : split_valid ],
+        'test':     indices[ split_valid : ], 
+    }
 
     if shuffle:
-        train_sampler = SubsetRandomSampler(train_indices)
-        valid_sampler = SubsetRandomSampler(valid_indices)
-        test_sampler = SubsetRandomSampler(test_indices)
+        samplers = { phase: SubsetRandomSampler(indices_dict[phase])
+                            for phase in ['train', 'valid', 'test'] }
     else:
-        train_sampler = Subset(dataset, train_indices)
-        valid_sampler = Subset(dataset, valid_indices)
-        test_sampler = Subset(dataset, test_indices)
+        samplers = { phase: Subset(dataset, indices_dict[phase])
+                            for phase in ['train', 'valid', 'test'] }
 
 
     pad_idx = dataset.vocab.stoi["<PAD>"]
 
-    trainloader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=pin_memory, collate_fn=MyCollate(pad_idx=pad_idx), sampler=train_sampler)
-    validloader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=pin_memory, collate_fn=MyCollate(pad_idx=pad_idx), sampler=valid_sampler)
-    testloader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=pin_memory, collate_fn=MyCollate(pad_idx=pad_idx), sampler=test_sampler)
+    loaders = {
+        phase: DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=pin_memory, collate_fn=MyCollate(pad_idx=pad_idx), sampler=samplers[phase])
+                for phase in ['train', 'valid', 'test'] }
 
-
-    return {
-        'train': trainloader,
-        'valid': validloader,
-        'test': testloader,
-    }
+    return loaders
