@@ -125,6 +125,15 @@ class MyCollate:
 
 
 def get_transformer(phase):
+    if phase == 'test':
+        return transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Resize(size=(400, 400)),
+                transforms.Normalize((0.485, 0.456, 0.406),
+                                    (0.229, 0.224, 0.225)),
+            ])
+
     return transforms.Compose(
         [
             transforms.ToTensor(),
@@ -133,30 +142,39 @@ def get_transformer(phase):
                                 (0.229, 0.224, 0.225)),
         ])
 
-def get_train_valid_loaders(train_size=.8, batch_size=64, num_workers=4, shuffle=True, pin_memory=True):
+def get_train_valid_loaders(train_size=.75, batch_size=64, num_workers=4, shuffle=True, pin_memory=True, phase='train'):
     root_folder = "data/flickr8k/images/"
     annotation_file = "data/flickr8k/captions.txt"
-    transform = get_transformer('train')
+    transform = get_transformer(phase)
 
     dataset = FlickerDataset(root_folder, annotation_file, transform=transform)
 
     indices = list(range(len(dataset)))
-    split = int(np.floor(train_size * len(dataset)))
-    train_indices, valid_indices = indices[:split], indices[split:]
+    split_train = int(np.floor(train_size * len(dataset)))
+    split_valid = int(np.floor((1-train_size)/2 * len(dataset))) + split_train
+    train_indices = indices[ : split_train]
+    valid_indices = indices[ split_train : split_valid ]
+    test_indices = indices[ split_valid : ]
 
     if shuffle:
         train_sampler = SubsetRandomSampler(train_indices)
         valid_sampler = SubsetRandomSampler(valid_indices)
+        test_sampler = SubsetRandomSampler(test_indices)
     else:
         train_sampler = Subset(dataset, train_indices)
         valid_sampler = Subset(dataset, valid_indices)
+        test_sampler = Subset(dataset, test_indices)
 
 
     pad_idx = dataset.vocab.stoi["<PAD>"]
+
     trainloader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=pin_memory, collate_fn=MyCollate(pad_idx=pad_idx), sampler=train_sampler)
     validloader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=pin_memory, collate_fn=MyCollate(pad_idx=pad_idx), sampler=valid_sampler)
+    testloader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=pin_memory, collate_fn=MyCollate(pad_idx=pad_idx), sampler=test_sampler)
+
 
     return {
         'train': trainloader,
         'valid': validloader,
+        'test': testloader,
     }
