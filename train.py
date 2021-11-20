@@ -40,7 +40,7 @@ def train_valid_one_epoch(model, loaders, writers, criterion, optimizer, schedul
 
         # iterate over batches
         for idx, (images, captions) in tqdm(    
-            enumerate(loaders[phase]), total=len(loaders[phase])
+            enumerate(loaders[phase]), total=len(loaders[phase]), desc=phase
         ):
             images, captions = images.to(device), captions.to(device)           #   move itmes to gpu
 
@@ -106,7 +106,7 @@ def train_valid_epochs(model, loaders, writers, num_epochs, criterion, optimizer
             }
             save_checkpoint(checkpoint, model_save_path)
         
-        print_examples(model, loaders['valid'].dataset)
+        print_examples(model, loaders['train'].dataset)
         print(print_str)
     
 
@@ -114,6 +114,8 @@ def train_valid_epochs(model, loaders, writers, num_epochs, criterion, optimizer
     train model by a predefined configuration
 '''
 def train():
+    np.random.seed(42)
+    torch.manual_seed(42)
 
     #   generate running environment
     datetime_srt = datetime.today().strftime("%d-%m-%y_%H:%M")

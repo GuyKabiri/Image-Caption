@@ -10,9 +10,12 @@ import glob
 import os
 import spacy
 from typing import Any
+import numpy as np
 import pandas as pd
 from PIL import Image
 from torch.utils.data import dataloader
+from torch.utils.data.dataset import Subset
+from torch.utils.data.sampler import SubsetRandomSampler
 from torchvision import transforms
 
 
@@ -100,27 +103,6 @@ class MyCollate:
 
         return imgs, targets
 
-def get_loader(
-    root_folder,
-    annotation_file,
-    transform,
-    batch_size=64,
-    num_workers=4,
-    shuffle=True,
-    pin_memory=True,
-):
-    dataset = FlickerDataset(root_folder, annotation_file, transform=transform)
-    pad_idx = dataset.vocab.stoi["<PAD>"]
-    loader = DataLoader(
-        dataset=dataset,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        shuffle=shuffle,
-        pin_memory=pin_memory,
-        collate_fn=MyCollate(pad_idx=pad_idx),
-    )
-
-    return loader
 
 def get_transformer(phase):
     return transforms.Compose(
@@ -131,44 +113,30 @@ def get_transformer(phase):
                                 (0.229, 0.224, 0.225)),
         ])
 
-def get_train_valid_loaders():
-    trainloader = get_loader(
-        root_folder="data/flickr8k/images/",
-        annotation_file="data/flickr8k/captions.txt",
-        transform=get_transformer('train')
-    )
+def get_train_valid_loaders(train_size=.8, batch_size=64, num_workers=4, shuffle=True, pin_memory=True):
+    root_folder = "data/flickr8k/images/"
+    annotation_file = "data/flickr8k/captions.txt"
+    transform = get_transformer('train')
 
-    validloader = get_loader(
-        root_folder="data/flickr8k/images/",
-        annotation_file="data/flickr8k/captions.txt",
-        transform=get_transformer('valid')
-    )
+    dataset = FlickerDataset(root_folder, annotation_file, transform=transform)
+
+    indices = list(range(len(dataset)))
+    split = int(np.floor(train_size * len(dataset)))
+    train_indices, valid_indices = indices[:split], indices[split:]
+
+    if shuffle:
+        train_sampler = SubsetRandomSampler(train_indices)
+        valid_sampler = SubsetRandomSampler(valid_indices)
+    else:
+        train_sampler = Subset(dataset, train_indices)
+        valid_sampler = Subset(dataset, valid_indices)
+
+
+    pad_idx = dataset.vocab.stoi["<PAD>"]
+    trainloader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=pin_memory, collate_fn=MyCollate(pad_idx=pad_idx), sampler=train_sampler)
+    validloader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=pin_memory, collate_fn=MyCollate(pad_idx=pad_idx), sampler=valid_sampler)
 
     return {
         'train': trainloader,
-        'valid': None,
+        'valid': validloader,
     }
-
-
-def main():
-
-    transform = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Resize(size=(224, 224)),
-            transforms.Normalize((0.485, 0.456, 0.406),
-                                (0.229, 0.224, 0.225)),
-        ])
-            
-    dataloader = get_loader(
-        root_folder="data/flickr8k/images/",
-        annotation_file="data/flickr8k/captions.txt",
-        transform=transform
-    )
-    for idx, (imgs, targets) in enumerate(dataloader):
-        print(imgs.shape)
-        print(targets.shape)
-
-
-if __name__ == "__main__":
-    main()
