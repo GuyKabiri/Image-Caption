@@ -103,8 +103,8 @@ def bleu_score_(model, batch, dataset, n=4):
     smoothie = SmoothingFunction().method1
 
     with torch.no_grad():
-        for img in images:    #   iterate over images
-            img = img.unsqueeze(0)      #   remove the batch axis
+        for i, img in enumerate(images):    #   iterate over images
+            img = img.unsqueeze(0)          #   remove the batch axis
 
             #   generate text sentence
             captions_list = [clean_sentence([dataset.vocab.itos[idx.detach().cpu().item()] for idx in captions[:, i, j]]) for j in range(5)]

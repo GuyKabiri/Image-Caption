@@ -20,27 +20,28 @@ from config import *
 '''
 def train_valid_one_epoch(model, loaders, writers, criterion, optimizer, steps):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    ngram = 4
 
     kpi = {
-        'train': {
+
+        phase: {
             'loss': [],
-            'bleu': {
-                '1-gram': 0,
-                '2-gram': 0,
-                '3-gram': 0,
-                '4-gram': 0,
-            }
-        },
-        
-        'valid': {
-            'loss': [],
-            'bleu': {
-                '1-gram': 0,
-                '2-gram': 0,
-                '3-gram': 0,
-                '4-gram': 0,
-            }
+            'bleu': { '{}-gram'.format(i): 0
+                                        for i in range(1, 1+ngram) }    #   generate dict for each n_gram
         }
+        for phase in ['train', 'valid']
+
+        # 'train': {
+        #     'loss': [],
+        #     'bleu': { '{}-gram'.format(i): []
+        #                                 for i in range(1, 1+ngram) }    #   generate dict for each n_gram
+        # },
+        
+        # 'valid': {
+        #     'loss': [],
+        #     'bleu': { '{}-gram'.format(i): []
+        #                                 for i in range(1, 1+ngram) }    #   generate dict for each n_gram
+        # }
     }
 
     for phase in ['train', 'valid']:            #   iterate for training and validation phases
@@ -70,19 +71,16 @@ def train_valid_one_epoch(model, loaders, writers, criterion, optimizer, steps):
                 outputs = model(images, captions[:-1])
 
             loss = criterion(outputs.reshape(-1, outputs.shape[2]), captions.reshape(-1))   #   calculate loss
+        
+            kpi[phase]['loss'].append(loss.item())                              #   register this step loss
+            writers[phase].add_scalar("steps loss", loss.item(), global_step=steps[phase])
+
             bleu_dict = bleu_score_(model, batch, loaders['train'].dataset)
             for n_gram in bleu_dict:
                 kpi[phase]['bleu'][n_gram] += bleu_dict[n_gram]
 
             if phase == 'train':
                 model.train()
-
-            kpi[phase]['loss'].append(loss.item())                              #   register this step loss
-            # kpi[phase]['bleu'].append(bleu)                              #   register this step loss
-
-            writers[phase].add_scalar("steps loss", loss.item(), global_step=steps[phase])
-
-            if phase == 'train':
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -98,17 +96,19 @@ def train_valid_one_epoch(model, loaders, writers, criterion, optimizer, steps):
 '''
     training and validation for numerous of epochs
 '''
-def train_valid_epochs(model, loaders, writers, num_epochs, criterion, optimizer, scheduler, steps, run_path, prev_valid_loss=float('inf')):
+def train_valid_epochs(model, loaders, writers, num_epochs, criterion, optimizer, scheduler, steps, run_path, prev_valid_loss=float('inf'), start_epoch=0):
     model_save_path = '{}/models/model_checkpoint.pth'.format(run_path)
 
     best_valid_loss = prev_valid_loss
+    start_epoch += 1
+    end_epoch = start_epoch + num_epochs
 
     #   iterate over the epochs
-    for epoch in range(1, num_epochs + 1):
-        print('Epoch {:3d} of {}:'.format(epoch, num_epochs), flush=True)
+    for epoch in range(start_epoch, end_epoch):
+        print('Epoch {:3d} of {}:'.format(epoch, end_epoch-1), flush=True)
 
         #   train and validation for one epoch
-        kpi, steps = train_valid_one_epoch(model, loaders, writers, criterion, optimizer, scheduler, steps) 
+        kpi, steps = train_valid_one_epoch(model, loaders, writers, criterion, optimizer, steps) 
 
         #   pretty printing training and validation results
         print_str = ''
@@ -128,7 +128,11 @@ def train_valid_epochs(model, loaders, writers, num_epochs, criterion, optimizer
         epoch_val_loss = sum(kpi['valid']['loss']) / len(loaders['valid'])
 
         if scheduler is not None:
-            writers['train'].add_scalar('lr', scheduler.get_last_lr()[0], epoch)
+            try:
+                lr = scheduler.get_last_lr()[0]
+            except:
+                lr = [ group['lr'] for group in optimizer.param_groups ][0]
+            writers['train'].add_scalar('lr', lr, epoch)
             scheduler.step(epoch_val_loss)  
 
         #   if validation loss is better, save model chechpoint
@@ -190,11 +194,12 @@ def train():
     criterion = CFG.criterion(ignore_index=loaders['train'].dataset.vocab.stoi['<PAD>'], **CFG.criterion_dict)
     optimizer = CFG.optimizer(model.parameters(), **CFG.optimizer_dict)
     scheduler = CFG.scheduler(optimizer, **CFG.scheduler_dict) if CFG.scheduler else None
+    start_epoch = 0
 
     if CFG.load_model:
-        steps, epoch = load_checkpoint(torch.load(CFG.model_path), model, optimizer)
+        steps, start_epoch = load_checkpoint(torch.load(CFG.model_path), model, optimizer)
 
-    train_valid_epochs(model, loaders, writers, CFG.num_epochs, criterion, optimizer, scheduler, steps, run_path)
+    train_valid_epochs(model, loaders, writers, CFG.num_epochs, criterion, optimizer, scheduler, steps, run_path, start_epoch=start_epoch)
 
     test(model, loaders['test'], None, criterion, run_path)
 
