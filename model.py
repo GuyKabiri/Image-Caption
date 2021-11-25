@@ -11,7 +11,8 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.pretrained = pretrained
         self.train_backbone = train_backbone
-        self.model = models.resnet152(pretrained=pretrained)
+        # self.model = models.resnet152(pretrained=pretrained)
+        self.model = models.inception_v3(pretrained=True, aux_logits=False)
         self.model.fc = nn.Linear(self.model.fc.in_features, embed_size)
 
         # modules = list(self.model.children())[:-1]

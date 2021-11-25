@@ -30,18 +30,6 @@ def train_valid_one_epoch(model, loaders, writers, criterion, optimizer, steps):
                                         for i in range(1, 1+ngram) }    #   generate dict for each n_gram
         }
         for phase in ['train', 'valid']
-
-        # 'train': {
-        #     'loss': [],
-        #     'bleu': { '{}-gram'.format(i): []
-        #                                 for i in range(1, 1+ngram) }    #   generate dict for each n_gram
-        # },
-        
-        # 'valid': {
-        #     'loss': [],
-        #     'bleu': { '{}-gram'.format(i): []
-        #                                 for i in range(1, 1+ngram) }    #   generate dict for each n_gram
-        # }
     }
 
     for phase in ['train', 'valid']:            #   iterate for training and validation phases
@@ -56,14 +44,14 @@ def train_valid_one_epoch(model, loaders, writers, criterion, optimizer, steps):
         for idx, batch in tqdm(    
             enumerate(loaders[phase]), total=len(loaders[phase]), desc=phase
         ):
-            (images, captions) = batch
+            (images, captions, _) = batch
             #   images shape    [batch, 3, 224, 224]
             #   captions shape  [max sentence length, batch, 5]
             max_length, batch_size, _ = captions.shape
             captions = captions.reshape(max_length, batch_size*5)
 
             images, captions = images.to(device), captions.to(device)           #   move itmes to gpu
-            images = torch.repeat_interleave(images, repeats=5, dim=0) #[a, b, c] -> [aaaaa, bbbbb, ccccc].T
+            images = torch.repeat_interleave(images, repeats=5, dim=0)          #   [a, b, c] -> [aaaaa, bbbbb, ccccc].T
 
             #   images shape    [batch*5, 3, 224, 224]
             #   captions shape  [max sentence length, batch*5]
@@ -151,8 +139,44 @@ def train_valid_epochs(model, loaders, writers, num_epochs, criterion, optimizer
         print(print_str)
 
 
-def test(model, loader, writer, criterion, run_path):
-    pass
+def test(model, loader, criterion, run_path):
+    save_path = '{}/test/test.csv'.format(run_path)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    ngram = 4
+
+    df = pd.DataFrame(columns=['image', 'prediction', 'loss', *['{}-gram'.format(i) for i in range(1, 1+ngram)] ])
+
+    model.eval()
+    with torch.no_grad():
+        # iterate over batches
+        for idx, batch in tqdm(    
+            enumerate(loader), total=len(loader), desc='testing'
+        ):
+            (image, caption, img_id) = batch
+            #   images shape    [batch, 3, 224, 224]
+            #   captions shape  [max sentence length, batch, 5]
+            max_length, batch_size, _ = caption.shape
+            caption = caption.reshape(max_length, batch_size*5)
+
+            image, caption = image.to(device), caption.to(device)           #   move itmes to gpu
+
+            words = ' '.join(model.caption(image, loader.dataset.vocab))    #   caption before multiple the images to 5 each one
+
+            image = torch.repeat_interleave(image, repeats=5, dim=0)          #   [a, b, c] -> [aaaaa, bbbbb, ccccc].T
+
+            #   images shape    [batch*5, 3, 224, 224]
+            #   captions shape  [max sentence length, batch*5]
+            outputs = model(image, caption[:-1])
+
+            loss = criterion(outputs.reshape(-1, outputs.shape[2]), caption.reshape(-1)).cpu().detach().item()   #   calculate loss
+            bleu_dict = bleu_score_(model, batch, loader.dataset)
+
+            df = df.append({ 'image': img_id[0], 'prediction': words, 'loss': loss, **bleu_dict }, ignore_index=True)
+
+            del image, caption, loss, words
+            torch.cuda.empty_cache()
+
+    df. to_csv(save_path)
 
     
 
@@ -200,8 +224,8 @@ def train():
         steps, start_epoch = load_checkpoint(torch.load(CFG.model_path), model, optimizer)
 
     train_valid_epochs(model, loaders, writers, CFG.num_epochs, criterion, optimizer, scheduler, steps, run_path, start_epoch=start_epoch)
+    test(model, loaders['test'], criterion, run_path)
 
-    test(model, loaders['test'], None, criterion, run_path)
 
 
 
