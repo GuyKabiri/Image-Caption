@@ -81,22 +81,12 @@ class FlickerDataset(Dataset):
         raw = self.df[self.df['image']==img_id]['caption'].tolist()
         caption = self.get_captions(raw)
 
-        # caption = self.captions[index]
-        # img_id = self.imgs[index]
         img = Image.open(os.path.join(self.root_dir, img_id)).convert("RGB")
 
         if self.transform:
             img = self.transform(img)
 
-        # numericalized_captions = []
-        # for cap in captions:
-        #     num_cap = [self.vocab.stoi["<SOS>"]] # stoi = string to index finding the start of the sentence
-        #     num_cap += self.vocab.numericalize(cap) # do it for the rest of the caption
-        #     num_cap.append(self.vocab.stoi["<EOS>"])
-        #     numericalized_captions.append(torch.tensor(num_cap))
-
-
-        return img, torch.as_tensor(caption)
+        return img, torch.as_tensor(caption), img_id
 
 
     def get_captions(self, raw_cpations):
@@ -121,7 +111,9 @@ class MyCollate:
         targets = [item[1] for item in batch]
         targets = pad_sequence(targets, batch_first=False, padding_value=self.pad_idx)
 
-        return imgs, targets
+        imgs_id = [item[2] for item in batch]
+
+        return imgs, targets, imgs_id
 
 
 def get_transformer(phase):
@@ -169,7 +161,14 @@ def get_train_valid_loaders(train_size=.75, batch_size=64, num_workers=4, shuffl
     pad_idx = dataset.vocab.stoi["<PAD>"]
 
     loaders = {
-        phase: DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=pin_memory, collate_fn=MyCollate(pad_idx=pad_idx), sampler=samplers[phase])
-                for phase in ['train', 'valid', 'test'] }
+        phase: DataLoader(
+                            dataset=dataset,
+                            batch_size=1 if phase=='test' else batch_size,
+                            num_workers=1 if phase=='test' else num_workers,
+                            pin_memory=pin_memory,
+                            collate_fn=MyCollate(pad_idx=pad_idx),
+                            sampler=samplers[phase]
+                        )
+                        for phase in ['train', 'valid', 'test'] }
 
     return loaders
