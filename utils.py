@@ -64,7 +64,7 @@ def norm(img):
 def create_env(path):
     if not os.path.exists(path):
         os.mkdir(path)
-    paths = ['logs', 'models', 'metrics']
+    paths = ['logs', 'models', 'test']
     for p in paths:
         sub_path = os.path.join(path, p)
         if not os.path.exists(sub_path):
@@ -99,7 +99,7 @@ def bleu_score_(model, batch, dataset, n=4):
     n_grams = { '{}-gram'.format(i): []
                                         for i in range(1, 1+n) }    #   generate dict for each n_gram
 
-    images, captions = batch
+    images, captions, _ = batch
     smoothie = SmoothingFunction().method1
 
     with torch.no_grad():
