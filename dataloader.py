@@ -66,8 +66,6 @@ class FlickerDataset(Dataset):
         self.transform = transform
 
         self.images = os.listdir(self.root_dir)
-        # self.imgs = self.df["image"]
-        # self.captions = self.df["caption"]
         self.vocab = Vocabulary(freq_treshold)
         self.vocab.build_vocabulary(self.df.caption.tolist())        
 
@@ -134,7 +132,7 @@ def get_transformer(phase):
                                 (0.229, 0.224, 0.225)),
         ])
 
-def get_train_valid_loaders(train_size=.75, batch_size=64, num_workers=4, shuffle=True, pin_memory=True, phase='train'):
+def get_loaders(train_size=.75, batch_size=64, num_workers=4, shuffle=True, pin_memory=True, phase='train'):
     root_folder = "data/flickr8k/images/"
     annotation_file = "data/flickr8k/captions.txt"
     transform = get_transformer(phase)
@@ -151,24 +149,24 @@ def get_train_valid_loaders(train_size=.75, batch_size=64, num_workers=4, shuffl
     }
 
     if shuffle:
-        samplers = { phase: SubsetRandomSampler(indices_dict[phase])
-                            for phase in ['train', 'valid', 'test'] }
+        samplers = { p: SubsetRandomSampler(indices_dict[p])
+                            for p in ['train', 'valid', 'test'] }
     else:
-        samplers = { phase: Subset(dataset, indices_dict[phase])
-                            for phase in ['train', 'valid', 'test'] }
+        samplers = { p: Subset(dataset, indices_dict[p])
+                            for p in ['train', 'valid', 'test'] }
 
 
     pad_idx = dataset.vocab.stoi["<PAD>"]
 
     loaders = {
-        phase: DataLoader(
+            p: DataLoader(
                             dataset=dataset,
-                            batch_size=1 if phase=='test' else batch_size,
-                            num_workers=1 if phase=='test' else num_workers,
+                            batch_size=1 if p=='test' else batch_size,
+                            num_workers=1 if p=='test' else num_workers,
                             pin_memory=pin_memory,
                             collate_fn=MyCollate(pad_idx=pad_idx),
-                            sampler=samplers[phase]
+                            sampler=samplers[p]
                         )
-                        for phase in ['train', 'valid', 'test'] }
+                        for p in ['train', 'valid', 'test'] }
 
     return loaders

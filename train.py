@@ -198,7 +198,7 @@ def train():
 
     #   generate training and validation dataloaders
     print('Generating loaders')
-    loaders = get_train_valid_loaders()
+    loaders = get_loaders(train_size=CFG.train_size, batch_size=CFG.batch_size)
 
     #   update vocabulary size in config file
     CFG.vocab_size =  len(loaders['train'].dataset.vocab)
@@ -230,4 +230,7 @@ def train():
 
 
 if __name__ == "__main__":
+    np.random.seed(CFG.seed)
+    torch.manual_seed(CFG.seed)
+    torch.cuda.manual_seed(CFG.seed)
     train()
