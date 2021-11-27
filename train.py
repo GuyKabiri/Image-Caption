@@ -221,7 +221,8 @@ def train():
     start_epoch = 0
 
     if CFG.load_model:
-        steps, start_epoch = load_checkpoint(torch.load(CFG.model_path), model, optimizer)
+        steps, end_epoch = load_checkpoint(torch.load(CFG.model_path), model, optimizer)
+        start_epoch = end_epoch + 1
 
     train_valid_epochs(model, loaders, writers, CFG.num_epochs, criterion, optimizer, scheduler, steps, run_path, start_epoch=start_epoch)
     test(model, loaders['test'], criterion, run_path)
