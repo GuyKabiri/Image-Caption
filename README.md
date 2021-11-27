@@ -93,19 +93,6 @@ df
 
 
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -349,9 +336,9 @@ For final configuration the following was used:
 *   Backbone: InceptionV3
 *   Embedded Size: 512
 *   Hidden Size: 512
-*   LSTM Layers: 2
+*   LSTM Layers: 3
 *   Batch Size: 32
-*   learning_rate: 1e-3
+*   learning_rate: 1e-4
 *   num_epochs: 150
 *   drop_rate: 0.5
 *   Criterion: CrossEntropyLoss
@@ -408,19 +395,6 @@ test_df
 
 
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
